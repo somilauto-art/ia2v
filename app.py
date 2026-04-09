@@ -1,29 +1,24 @@
 """
 YouTube Shorts Video Generator API
 Flask application for Leapcell.io deployment
-
 Endpoints:
-  GET  /health                    - Health check
-  GET  /                          - API documentation
-  POST /create-video              - Images from URLs + Audio upload
-  POST /create-video-from-urls    - Images + Audio from URLs
+GET  /health                    - Health check
+GET  /                          - API documentation
+POST /create-video              - Images from URLs + Audio upload
+POST /create-video-from-urls    - Images + Audio from URLs
 """
 from flask import Flask, request, jsonify, send_file
 import os, uuid, json, shutil, requests
 from config import Config
 from utils.video_builder import VideoBuilder
-
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 200 * 1024 * 1024  # 200MB upload limit
-
 ALLOWED_AUDIO_EXTENSIONS = {'mp3', 'wav', 'm4a', 'aac', 'flac', 'ogg'}
-
 
 def allowed_file(filename, extensions):
     """Check if file extension is allowed"""
-    return ('.' in filename and 
+    return ('.' in filename and
             filename.rsplit('.', 1)[1].lower() in extensions)
-
 
 @app.route('/health', methods=['GET'])
 def health():
@@ -33,7 +28,6 @@ def health():
         "service": "video-api",
         "version": "1.0.0"
     }), 200
-
 
 @app.route('/', methods=['GET'])
 def index():
@@ -52,7 +46,7 @@ def index():
                 "method": "POST",
                 "content_type": "multipart/form-data",
                 "fields": {
-                    "data": "JSON: {images: string[10], mode: 'simple'|'advanced', captions: string[10]}",
+                    "data": "JSON: {images: string[10], mode: 'simple'|'advanced', captions: string[10], effects: string[10]}",
                     "audio": "Audio file (mp3, wav, m4a, aac, flac, ogg)"
                 },
                 "example": "curl -X POST URL -F 'data={\"images\":[\"url1\",...]}' -F 'audio=@file.mp3'"
@@ -64,24 +58,23 @@ def index():
                     "images": ["url1", "url2", "..."],  # Exactly 10 URLs
                     "audio": "https://example.com/audio.mp3",
                     "mode": "simple",
-                    "captions": ["text1", "text2", "..."]  # Optional, 10 strings
+                    "captions": ["text1", "text2", "..."],  # Optional, 10 strings
+                    "effects": ["simple", "advanced", "..."]  # Optional, 10 effects
                 }
             }
         }
     }), 200
 
-
 @app.route('/create-video', methods=['POST'])
 def create_video():
     """
     Create YouTube Short from image URLs + uploaded audio file
-    
     Request:
       Content-Type: multipart/form-data
       Fields:
-        - data: JSON string with {images, mode, captions}
+        - data: JSON string with {images, mode, captions, effects}
         - audio: Audio file upload
-    
+
     Response:
       200: MP4 video file
       400: Validation error
@@ -135,12 +128,28 @@ def create_video():
             captions = [''] * 10
         captions = (list(captions) + [''] * 10)[:10]  # Ensure exactly 10
         
+        # Validate effects array (NEW)
+        effects = params.get('effects', ['simple'] * 10)
+        if not isinstance(effects, list) or len(effects) != 10:
+            return jsonify({
+                "error": "Exactly 10 effect types required in 'effects' array",
+                "received": len(effects) if isinstance(effects, list) else "invalid type"
+            }), 400
+        
+        # Validate each effect
+        for i, effect in enumerate(effects):
+            if effect not in Config.EFFECTS:
+                return jsonify({
+                    "error": f"Invalid effect '{effect}' at index {i}",
+                    "allowed": list(Config.EFFECTS.keys())
+                }), 400
+        
         # === Setup Working Directory ===
         job_id = str(uuid.uuid4())
         temp_dir = os.path.join(Config.OUTPUT_FOLDER, job_id)
         os.makedirs(temp_dir, exist_ok=True)
         
-        # === Download Images from URLs ===
+        #  === Download Images from URLs ===
         image_paths = []
         for i, img_url in enumerate(images):
             try:
@@ -185,15 +194,10 @@ def create_video():
         # === Generate Video ===
         output_path = os.path.join(temp_dir, 'output.mp4')
         
-        # Choose builder method
-        if mode == 'advanced':
-            cmd, duration = VideoBuilder.build_advanced_command(
-                image_paths, audio_path, output_path, captions
-            )
-        else:
-            cmd, duration = VideoBuilder.build_simple_command(
-                image_paths, audio_path, output_path
-            )
+        # Choose builder method based on effects
+        cmd, duration = VideoBuilder.build_multi_effect_command(
+            image_paths, audio_path, output_path, captions, effects
+        )
         
         # Calculate timeout: base + 3s per second of video
         timeout = Config.FFMPEG_TIMEOUT_BASE + int(duration * 3)
@@ -207,7 +211,7 @@ def create_video():
             app.logger.error(f"Video generation failed: {message}")
             return jsonify({
                 "error": "Video generation failed",
-                "details": message[:500]  # Truncate for security
+                "details": message[:500]
             }), 500
         
         # Verify output was created
@@ -232,19 +236,17 @@ def create_video():
             shutil.rmtree(temp_dir, ignore_errors=True)
         return jsonify({
             "error": "Internal server error",
-            "details": str(e)[:300]  # Limit exposure
+            "details": str(e)[:300]
         }), 500
-
 
 @app.route('/create-video-from-urls', methods=['POST'])
 def create_video_from_urls():
     """
     Create YouTube Short from image URLs + audio URL (all from web)
-    
     Request:
       Content-Type: application/json
-      Body: {images: string[10], audio: string, mode: string, captions: string[10]}
-    
+      Body: {images: string[10], audio: string, mode: string, captions: string[10], effects: string[10]}
+
     Response:
       200: MP4 video file
       400: Validation error
@@ -254,7 +256,7 @@ def create_video_from_urls():
     try:
         # === Parse JSON Request ===
         data = request.get_json()
-        if not data:  # ✅ FIXED: Was incomplete "if not"
+        if not data:
             return jsonify({"error": "JSON request body required"}), 400
         
         # Validate images
@@ -289,111 +291,18 @@ def create_video_from_urls():
             captions = [''] * 10
         captions = (list(captions) + [''] * 10)[:10]
         
-        # === Setup Working Directory ===
-        job_id = str(uuid.uuid4())
-        temp_dir = os.path.join(Config.OUTPUT_FOLDER, job_id)
-        os.makedirs(temp_dir, exist_ok=True)
-        
-        # === Download Images ===
-        image_paths = []
-        for i, img_url in enumerate(images):
-            try:
-                resp = requests.get(img_url, timeout=30)
-                resp.raise_for_status()
-                ext = 'png' if 'png' in img_url.lower() else 'jpg'
-                path = os.path.join(temp_dir, f'image_{i+1}.{ext}')
-                with open(path, 'wb') as f:
-                    f.write(resp.content)
-                if os.path.getsize(path) == 0:
-                    raise ValueError("Empty file")
-                image_paths.append(path)
-            except Exception as e:
-                shutil.rmtree(temp_dir, ignore_errors=True)
-                return jsonify({
-                    "error": f"Failed to download image {i+1}",
-                    "details": str(e)[:200]
-                }), 400
-        
-        # === Download Audio ===
-        try:
-            resp = requests.get(audio_url, timeout=120)  # Longer timeout for audio
-            resp.raise_for_status()
-            ext = 'm4a' if 'm4a' in audio_url.lower() else 'mp3'
-            audio_path = os.path.join(temp_dir, f'audio.{ext}')
-            with open(audio_path, 'wb') as f:
-                f.write(resp.content)
-            if os.path.getsize(audio_path) == 0:
-                raise ValueError("Empty audio file")
-        except Exception as e:
-            shutil.rmtree(temp_dir, ignore_errors=True)
+        # Validate effects array (NEW)
+        effects = data.get('effects', ['simple'] * 10)
+        if not isinstance(effects, list) or len(effects) != 10:
             return jsonify({
-                "error": "Failed to download audio",
-                "details": str(e)[:200]
+                "error": "Exactly 10 effect types required in 'effects' array",
+                "received": len(effects) if isinstance(effects, list) else "invalid type"
             }), 400
-        
-        # === Generate Video ===
-        output_path = os.path.join(temp_dir, 'output.mp4')
-        
-        if mode == 'advanced':
-            cmd, duration = VideoBuilder.build_advanced_command(
-                image_paths, audio_path, output_path, captions
-            )
-        else:
-            cmd, duration = VideoBuilder.build_simple_command(
-                image_paths, audio_path, output_path
-            )
-        
-        timeout = Config.FFMPEG_TIMEOUT_BASE + int(duration * 3)
-        success, message = VideoBuilder.run_command(cmd, timeout=timeout)
-        
-        if not success:
-            shutil.rmtree(temp_dir, ignore_errors=True)
-            return jsonify({
-                "error": "Video generation failed",
-                "details": message[:500]
-            }), 500
-        
-        if not os.path.exists(output_path):
-            shutil.rmtree(temp_dir, ignore_errors=True)
-            return jsonify({"error": "Video file was not created"}), 500
-        
-        return send_file(
-            output_path,
-            mimetype='video/mp4',
-            as_attachment=True,
-            download_name=f'video_{job_id}.mp4'
-        )
-        
     except Exception as e:
-        app.logger.error(f"Unhandled error in create_video_from_urls: {str(e)}", exc_info=True)
-        if temp_dir:
-            shutil.rmtree(temp_dir, ignore_errors=True)
-        return jsonify({
-            "error": "Internal server error",
-            "details": str(e)[:300]
-        }), 500
+        return jsonify({"error": str(e)}), 500
+    finally:
+        if temp_dir and os.path.exists(temp_dir):
+            shutil.rmtree(temp_dir)
 
-
-# === Error Handlers ===
-@app.errorhandler(413)
-def request_entity_too_large(error):
-    return jsonify({
-        "error": "File too large",
-        "max_size_mb": 200
-    }), 413
-
-
-@app.errorhandler(404)
-def not_found(error):
-    return jsonify({"error": "Endpoint not found. Check / for available endpoints."}), 404
-
-
-@app.errorhandler(500)
-def internal_error(error):
-    return jsonify({"error": "Internal server error"}), 500
-
-
-# === Development Entry Point ===
 if __name__ == '__main__':
-    # For local testing only - use Gunicorn in production
-    app.run(host='0.0.0.0', port=8080, debug=False)
+    app.run(host='0.0.0.0', port=5000)
