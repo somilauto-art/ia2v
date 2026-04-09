@@ -1,49 +1,37 @@
+"""
+YouTube Shorts Video Generator - Configuration
+Optimized for Leapcell.io serverless deployment
+"""
 import os
 
 class Config:
     # 🎯 YouTube Shorts Specifications
-    OUTPUT_WIDTH = 1080          # Vertical width
-    OUTPUT_HEIGHT = 1920         # Vertical height (9:16 aspect ratio)
-    FPS = 30                     # YouTube recommended: 30 or 60fps
+    OUTPUT_WIDTH = 1080           # Vertical width
+    OUTPUT_HEIGHT = 1920          # Vertical height (9:16 aspect ratio)
+    FPS = 30                      # Standard YouTube frame rate
+    
+    # 🎬 Video Quality Settings
     VIDEO_CODEC = 'libx264'
     AUDIO_CODEC = 'aac'
+    CRF = 23                      # 18=best, 23=good balance, 28=smaller
+    PRESET = 'fast'               # 'fast' for speed, 'medium' for quality
+    PIXEL_FORMAT = 'yuv420p'      # Required for YouTube compatibility
+    AUDIO_BITRATE = '128k'
+    AUDIO_SAMPLE_RATE = 48000
     
-    # 🎬 Quality Settings for YouTube
-    CRF = 20                     # 18-23 range (20 = excellent quality/size balance)
-    PRESET = 'medium'            # 'slow' for better compression, 'medium' for speed
-    VIDEO_BITRATE = '8M'         # YouTube Shorts target bitrate
-    AUDIO_BITRATE = '192k'
-    AUDIO_SAMPLE_RATE = '48000'  # YouTube standard
+    # 🎨 Ken Burns Effect Settings
+    ZOOM_MIN = 1.0                # Start zoom level
+    ZOOM_MAX = 1.15               # End zoom level (subtle for vertical)
     
-    # ⏱️ Timing for 10 images in ≤60 seconds
-    MAX_DURATION = 58            # Leave 2s buffer under 60s limit
-    NUM_IMAGES = 10
-    TRANSITION_DURATION = 0.8    # Shorter transitions for fast-paced Shorts
-    IMAGE_DISPLAY_TIME = (MAX_DURATION - TRANSITION_DURATION) / NUM_IMAGES  # ~5.7s each
-    
-    # 🎨 Ken Burns Effect (Vertical-Optimized)
-    ZOOM_START = 1.0
-    ZOOM_END = 1.25              # Subtler zoom for vertical framing
-    PAN_VARIATIONS = [
-        'center',
-        'top-center', 
-        'bottom-center',
-        'center-left',
-        'center-right'
-    ]
-    
-    # 🎵 Audio Handling
-    AUDIO_FADE_IN = 1.0          # 1-second fade in
-    AUDIO_FADE_OUT = 2.0         # 2-second fade out (critical for Shorts)
-    
-    # 📁 Paths (Leapcell /tmp is writable)
+    # 📁 Paths (Leapcell uses /tmp for writable storage)
     UPLOAD_FOLDER = '/tmp/uploads'
     OUTPUT_FOLDER = '/tmp/output'
+    
+    # Create directories on startup
     os.makedirs(UPLOAD_FOLDER, exist_ok=True)
     os.makedirs(OUTPUT_FOLDER, exist_ok=True)
     
-    # 🏷️ Optional: Default caption styling (for text overlay feature)
-    CAPTION_FONT = '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf'
-    CAPTION_SIZE = 48
-    CAPTION_COLOR = 'white'
-    CAPTION_BOX_COLOR = 'black@0.6'  # Semi-transparent black background
+    # ⏱️ Processing Limits
+    MAX_AUDIO_DURATION = 600      # 10 minutes max (adjust as needed)
+    FFPROBE_TIMEOUT = 30          # Seconds to wait for audio probe
+    FFMPEG_TIMEOUT_BASE = 180     # Base timeout + 3s per second of video
