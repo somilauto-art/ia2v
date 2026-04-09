@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+*.log
+/tmp/*
+!/.gitkeep
+*.mp4
+*.mov
+.DS_Store
