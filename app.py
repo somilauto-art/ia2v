@@ -7,18 +7,45 @@ GET  /                          - API documentation
 POST /create-video              - Images from URLs + Audio upload
 POST /create-video-from-urls    - Images + Audio from URLs
 """
-from flask import Flask, request, jsonify, send_file
-import os, uuid, json, shutil, requests
+from flask import Flask, request, jsonify, send_file, url_for
+import os, uuid, json, shutil, requests, time
 from config import Config
 from utils.video_builder import VideoBuilder
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 200 * 1024 * 1024  # 200MB upload limit
 ALLOWED_AUDIO_EXTENSIONS = {'mp3', 'wav', 'm4a', 'aac', 'flac', 'ogg'}
+GENERATED_VIDEOS = {}
 
 def allowed_file(filename, extensions):
     """Check if file extension is allowed"""
     return ('.' in filename and
             filename.rsplit('.', 1)[1].lower() in extensions)
+
+def parse_bool(value, default=False):
+    """Parse flexible boolean values from JSON/form fields."""
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return value != 0
+    if isinstance(value, str):
+        return value.strip().lower() in {'1', 'true', 'yes', 'y', 'on'}
+    return default
+
+def cleanup_expired_videos(now_ts):
+    """Remove expired generated videos from temp storage and in-memory index."""
+    expired_ids = [
+        job_id for job_id, meta in GENERATED_VIDEOS.items()
+        if now_ts - meta.get('created_at', 0) > Config.GENERATED_URL_TTL_SECONDS
+    ]
+    for job_id in expired_ids:
+        meta = GENERATED_VIDEOS.pop(job_id, None)
+        if not meta:
+            continue
+        temp_dir = meta.get('temp_dir')
+        if temp_dir and os.path.exists(temp_dir):
+            shutil.rmtree(temp_dir, ignore_errors=True)
 
 @app.route('/health', methods=['GET'])
 def health():
@@ -39,14 +66,15 @@ def index():
             "GET /health": "Health check",
             "GET /": "This documentation",
             "POST /create-video": "Create video: image URLs + audio upload",
-            "POST /create-video-from-urls": "Create video: image URLs + audio URL"
+            "POST /create-video-from-urls": "Create video: image URLs + audio URL",
+            "GET /videos/<job_id>": "Download generated video when return_url=true"
         },
         "usage": {
             "/create-video": {
                 "method": "POST",
                 "content_type": "multipart/form-data",
                 "fields": {
-                    "data": "JSON: {images: string[10], mode: 'simple'|'advanced', captions: string[10], effects: string[10]}",
+                    "data": "JSON: {images: string[10], mode: 'simple'|'advanced', captions: string[10], effects: string[10], return_url: boolean}",
                     "audio": "Audio file (mp3, wav, m4a, aac, flac, ogg)"
                 },
                 "example": "curl -X POST URL -F 'data={\"images\":[\"url1\",...]}' -F 'audio=@file.mp3'"
@@ -102,6 +130,9 @@ def create_video():
         except json.JSONDecodeError:
             return jsonify({"error": "Invalid JSON in 'data' field"}), 400
         
+        # If true, endpoint returns JSON with downloadable URL instead of binary payload.
+        return_url = parse_bool(params.get('return_url'), default=False)
+
         # Validate images array
         images = params.get('images', [])
         if not isinstance(images, list) or len(images) != 10:
@@ -218,8 +249,51 @@ def create_video():
         if not os.path.exists(output_path):
             shutil.rmtree(temp_dir, ignore_errors=True)
             return jsonify({"error": "Video file was not created"}), 500
+
+        # Keep response size below hosted gateway limit.
+        output_size = os.path.getsize(output_path)
+        if output_size > Config.MAX_RESPONSE_BYTES:
+            compressed_path = os.path.join(temp_dir, 'output_compressed.mp4')
+            app.logger.info(
+                f"Output exceeds payload limit ({output_size} bytes). Attempting compression to <= {Config.MAX_RESPONSE_BYTES} bytes"
+            )
+            ok, compress_msg = VideoBuilder.compress_to_target_size(
+                output_path,
+                compressed_path,
+                Config.MAX_RESPONSE_BYTES,
+            )
+            if ok and os.path.exists(compressed_path):
+                output_path = compressed_path
+                output_size = os.path.getsize(output_path)
+                app.logger.info(f"Compression succeeded: {output_size} bytes")
+            else:
+                shutil.rmtree(temp_dir, ignore_errors=True)
+                return jsonify({
+                    "error": "Generated video exceeds hosted response payload limit",
+                    "details": compress_msg,
+                    "suggestion": "Use shorter audio, fewer images, or upload output to object storage and return a URL"
+                }), 413
         
-        app.logger.info(f"Video generated successfully: job={job_id}, size={os.path.getsize(output_path)} bytes")
+        app.logger.info(f"Video generated successfully: job={job_id}, size={output_size} bytes")
+
+        now_ts = int(time.time())
+        cleanup_expired_videos(now_ts)
+        GENERATED_VIDEOS[job_id] = {
+            "path": output_path,
+            "temp_dir": temp_dir,
+            "created_at": now_ts,
+            "size": output_size,
+        }
+
+        if return_url:
+            download_url = request.host_url.rstrip('/') + url_for('download_video', job_id=job_id)
+            return jsonify({
+                "status": "success",
+                "job_id": job_id,
+                "download_url": download_url,
+                "size_bytes": output_size,
+                "expires_in_seconds": Config.GENERATED_URL_TTL_SECONDS,
+            }), 200
         
         # === Send Video File ===
         return send_file(
@@ -238,6 +312,28 @@ def create_video():
             "error": "Internal server error",
             "details": str(e)[:300]
         }), 500
+
+@app.route('/videos/<job_id>', methods=['GET'])
+def download_video(job_id):
+    """Download previously generated video when using return_url mode."""
+    now_ts = int(time.time())
+    cleanup_expired_videos(now_ts)
+    meta = GENERATED_VIDEOS.get(job_id)
+    if not meta:
+        return jsonify({"error": "Video URL expired or not found"}), 404
+
+    output_path = meta.get('path')
+    if not output_path or not os.path.exists(output_path):
+        GENERATED_VIDEOS.pop(job_id, None)
+        return jsonify({"error": "Video file not found"}), 404
+
+    return send_file(
+        output_path,
+        mimetype='video/mp4',
+        as_attachment=True,
+        download_name=f'short_{job_id}.mp4',
+        max_age=3600,
+    )
 
 @app.route('/create-video-from-urls', methods=['POST'])
 def create_video_from_urls():

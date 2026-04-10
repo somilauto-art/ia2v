@@ -225,3 +225,48 @@ class VideoBuilder:
             return False, "FFmpeg timed out"
         except Exception as e:
             return False, f"Unexpected error: {str(e)}"
+
+    @staticmethod
+    def compress_to_target_size(input_path, output_path, target_bytes, timeout=240):
+        """Re-encode video with lower bitrates until it fits target payload size."""
+        if not os.path.exists(input_path):
+            return False, "Input video does not exist"
+
+        best_path = None
+        best_size = None
+
+        for video_bitrate in Config.FALLBACK_VIDEO_BITRATES:
+            for audio_bitrate in Config.FALLBACK_AUDIO_BITRATES:
+                cmd = [
+                    'ffmpeg',
+                    '-y',
+                    '-i', input_path,
+                    '-c:v', Config.VIDEO_CODEC,
+                    '-preset', 'veryfast',
+                    '-b:v', video_bitrate,
+                    '-maxrate', video_bitrate,
+                    '-bufsize', '2M',
+                    '-pix_fmt', Config.PIXEL_FORMAT,
+                    '-c:a', Config.AUDIO_CODEC,
+                    '-b:a', audio_bitrate,
+                    '-ar', str(Config.AUDIO_SAMPLE_RATE),
+                    '-movflags', '+faststart',
+                    output_path,
+                ]
+
+                ok, message = VideoBuilder.run_command(cmd, timeout=timeout)
+                if not ok:
+                    continue
+
+                size = os.path.getsize(output_path)
+                if best_size is None or size < best_size:
+                    best_size = size
+                    best_path = output_path
+
+                if size <= target_bytes:
+                    return True, "Success"
+
+        if best_path is not None:
+            return False, f"Compressed video still exceeds payload limit ({best_size} bytes)"
+
+        return False, "Failed to compress output video"

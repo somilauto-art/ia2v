@@ -19,6 +19,11 @@ class Config:
     PIXEL_FORMAT = 'yuv420p'      # Required for YouTube compatibility
     AUDIO_BITRATE = '128k'
     AUDIO_SAMPLE_RATE = 48000
+
+    # 📦 Hosted response payload guard (Leapcell gateway limit safety margin)
+    MAX_RESPONSE_BYTES = 5_800_000
+    FALLBACK_VIDEO_BITRATES = ['450k', '350k', '280k']
+    FALLBACK_AUDIO_BITRATES = ['96k', '64k', '48k']
     
     # 🎨 Ken Burns Effect Settings
     ZOOM_MIN = 1.0                # Start zoom level
@@ -32,6 +37,7 @@ class Config:
     MAX_AUDIO_DURATION = 600      # 10 minutes max
     FFPROBE_TIMEOUT = 30          # Seconds to wait for audio probe
     FFMPEG_TIMEOUT_BASE = 180     # Base timeout before scaling by duration
+    GENERATED_URL_TTL_SECONDS = 3600
     
     # ===== EFFECT CONFIGURATION =====
     # 50 distinct FFmpeg-safe presets for vertical slideshow rendering.
