@@ -1,67 +1,80 @@
-# Effects to Transition Mapping
+# Effects to Transition and Idle Mapping
 
-This file documents how each API effect key maps to an xfade transition in the renderer.
+This file documents the stable API key contract. Each key defines a pair:
+1. Transition effect used in xfade.
+2. Idle/post-transition style used while the image is on screen.
 
-- Total effects: 50
-- Total transition modes configured: 50
-- Unique transitions assigned: 50
+Current renderer behavior for each clip:
+1. Resolve key (`effect_key_00` ... `effect_key_49`) to a profile.
+2. Apply profile visual preset (`Internal Effect`).
+3. Apply profile idle style (pan/zoom rhythm + polish).
+4. Join clips with profile transition.
+5. Apply global final polish after all transitions.
 
-## Mapping Table
+- Public effect keys: 50 (`effect_key_00` to `effect_key_49`)
+- Transition modes configured: 50
+- Idle style variants: 5 (`idle_soft`, `idle_warm`, `idle_cool`, `idle_punch`, `idle_calm`)
 
-| # | Effect Key | Transition | Unique Assigned | Short Description |
+## Mapping Table (Stable Public Keys)
+
+| # | Effect Key | Internal Effect | Transition | Idle Style |
 |---|---|---|---|---|
-| 1 | simple_fit | fade | Yes | Centered fit with black padding |
-| 2 | warm_grade | fadeblack | Yes | Warm color grade |
-| 3 | cool_grade | fadewhite | Yes | Cool color grade |
-| 4 | high_contrast | fadegrays | Yes | High contrast look |
-| 5 | soft_contrast | wipeleft | Yes | Soft contrast look |
-| 6 | grayscale_soft | wiperight | Yes | Soft grayscale |
-| 7 | grayscale_contrast | wipeup | Yes | Grayscale with extra contrast |
-| 8 | sepia_soft | wipedown | Yes | Soft sepia tone |
-| 9 | sepia_deep | slideleft | Yes | Deep sepia tone |
-| 10 | negative | slideright | Yes | Inverted colors |
-| 11 | mirror_h | slideup | Yes | Horizontal mirror |
-| 12 | mirror_v | slidedown | Yes | Vertical flip |
-| 13 | rotate_cw | smoothleft | Yes | Rotate 90 degrees clockwise |
-| 14 | rotate_ccw | smoothright | Yes | Rotate 90 degrees counter-clockwise |
-| 15 | rotate_180 | smoothup | Yes | Rotate 180 degrees |
-| 16 | rotate_soft | smoothdown | Yes | Slight rotation |
-| 17 | blur_soft | circlecrop | Yes | Light blur |
-| 18 | blur_medium | rectcrop | Yes | Medium blur |
-| 19 | blur_strong | circleopen | Yes | Strong blur |
-| 20 | sharpen_soft | circleclose | Yes | Light sharpening |
-| 21 | sharpen_strong | vertopen | Yes | Strong sharpening |
-| 22 | vignette_soft | vertclose | Yes | Soft vignette |
-| 23 | vignette_medium | horzopen | Yes | Medium vignette |
-| 24 | vignette_hard | horzclose | Yes | Strong vignette |
-| 25 | edge_detect | dissolve | Yes | Edge detection |
-| 26 | edge_detect_strong | pixelize | Yes | Stronger edge detection |
-| 27 | noise_soft | radial | Yes | Light film noise |
-| 28 | noise_medium | distance | Yes | Medium film noise |
-| 29 | noise_strong | diagtl | Yes | Strong film noise |
-| 30 | hue_shift_warm | diagtr | Yes | Warm hue shift |
-| 31 | hue_shift_cool | diagbl | Yes | Cool hue shift |
-| 32 | saturation_boost | diagbr | Yes | Higher saturation |
-| 33 | saturation_reduce | hlslice | Yes | Lower saturation |
-| 34 | brightness_boost | hrslice | Yes | Brighter image |
-| 35 | brightness_reduce | vuslice | Yes | Darker image |
-| 36 | gamma_warm | vdslice | Yes | Gamma lift |
-| 37 | gamma_cool | hblur | Yes | Gamma reduction |
-| 38 | drawgrid | zoomin | Yes | Subtle grid overlay |
-| 39 | film_grain | fadefast | Yes | Grainy film look |
-| 40 | cinematic | fadeslow | Yes | Cinematic grade |
-| 41 | portrait_pop | hlwind | Yes | Vibrant portrait look |
-| 42 | soft_pastel | hrwind | Yes | Soft pastel look |
-| 43 | teal_orange | vuwind | Yes | Teal and orange grade |
-| 44 | retro_tint | vdwind | Yes | Retro tint |
-| 45 | magenta_tint | coverleft | Yes | Magenta tint |
-| 46 | crop_zoom | coverright | Yes | Slight crop zoom |
-| 47 | inner_frame | coverup | Yes | Inset framed crop |
-| 48 | border_soft | coverdown | Yes | Soft border frame |
-| 49 | border_dark | revealleft | Yes | Dark border frame |
-| 50 | clarity | revealright | Yes | Sharpened clarity look |
+| 0 | effect_key_00 | simple_fit | fade | idle_soft |
+| 1 | effect_key_01 | warm_grade | fadeblack | idle_warm |
+| 2 | effect_key_02 | cool_grade | fadewhite | idle_cool |
+| 3 | effect_key_03 | high_contrast | fadegrays | idle_punch |
+| 4 | effect_key_04 | soft_contrast | wipeleft | idle_calm |
+| 5 | effect_key_05 | grayscale_soft | wiperight | idle_soft |
+| 6 | effect_key_06 | grayscale_contrast | wipeup | idle_warm |
+| 7 | effect_key_07 | sepia_soft | wipedown | idle_cool |
+| 8 | effect_key_08 | sepia_deep | slideleft | idle_punch |
+| 9 | effect_key_09 | negative | slideright | idle_calm |
+| 10 | effect_key_10 | mirror_h | slideup | idle_soft |
+| 11 | effect_key_11 | rotate_cw | slidedown | idle_warm |
+| 12 | effect_key_12 | rotate_ccw | smoothleft | idle_cool |
+| 13 | effect_key_13 | rotate_soft | smoothright | idle_punch |
+| 14 | effect_key_14 | blur_soft | smoothup | idle_calm |
+| 15 | effect_key_15 | blur_medium | smoothdown | idle_soft |
+| 16 | effect_key_16 | blur_strong | circlecrop | idle_warm |
+| 17 | effect_key_17 | sharpen_soft | rectcrop | idle_cool |
+| 18 | effect_key_18 | sharpen_strong | circleopen | idle_punch |
+| 19 | effect_key_19 | vignette_soft | circleclose | idle_calm |
+| 20 | effect_key_20 | vignette_medium | vertopen | idle_soft |
+| 21 | effect_key_21 | vignette_hard | vertclose | idle_warm |
+| 22 | effect_key_22 | noise_soft | horzopen | idle_cool |
+| 23 | effect_key_23 | noise_medium | horzclose | idle_punch |
+| 24 | effect_key_24 | hue_shift_warm | dissolve | idle_calm |
+| 25 | effect_key_25 | hue_shift_cool | pixelize | idle_soft |
+| 26 | effect_key_26 | saturation_boost | radial | idle_warm |
+| 27 | effect_key_27 | saturation_reduce | distance | idle_cool |
+| 28 | effect_key_28 | brightness_boost | diagtl | idle_punch |
+| 29 | effect_key_29 | brightness_reduce | diagtr | idle_calm |
+| 30 | effect_key_30 | gamma_warm | diagbl | idle_soft |
+| 31 | effect_key_31 | gamma_cool | diagbr | idle_warm |
+| 32 | effect_key_32 | film_grain | hlslice | idle_cool |
+| 33 | effect_key_33 | cinematic | hrslice | idle_punch |
+| 34 | effect_key_34 | portrait_pop | vuslice | idle_calm |
+| 35 | effect_key_35 | soft_pastel | vdslice | idle_soft |
+| 36 | effect_key_36 | teal_orange | hblur | idle_warm |
+| 37 | effect_key_37 | retro_tint | zoomin | idle_cool |
+| 38 | effect_key_38 | magenta_tint | fadefast | idle_punch |
+| 39 | effect_key_39 | clarity | fadeslow | idle_calm |
+| 40 | effect_key_40 | dream_glow | hlwind | idle_soft |
+| 41 | effect_key_41 | noir_film | hrwind | idle_warm |
+| 42 | effect_key_42 | sunset_pop | vuwind | idle_cool |
+| 43 | effect_key_43 | arctic_pop | vdwind | idle_punch |
+| 44 | effect_key_44 | vhs_soft | coverleft | idle_calm |
+| 45 | effect_key_45 | fade_matte | coverright | idle_soft |
+| 46 | effect_key_46 | clean_commercial | coverup | idle_warm |
+| 47 | effect_key_47 | pastel_wash | coverdown | idle_cool |
+| 48 | effect_key_48 | bold_magazine | revealleft | idle_punch |
+| 49 | effect_key_49 | soft_skin | revealright | idle_calm |
 
 ## Notes
 
-- Rendering pipeline keeps image colors/content unchanged and applies transition effects between image clips.
-- The selected effect key determines transition type; it does not apply color grading on the image itself.
+- Preferred client contract is `effect_key_00` ... `effect_key_49`.
+- Direct internal effect names are still accepted for backward compatibility.
+- Effects input supports three formats:
+  - single string key: `"effects": "effect_key_01"` (auto-applies to all 10 clips)
+  - one-item list: `"effects": ["effect_key_01"]` (auto-applies to all 10 clips)
+  - ten-item list: `"effects": ["effect_key_00", ..., "effect_key_49"]`

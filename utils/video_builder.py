@@ -70,7 +70,7 @@ class VideoBuilder:
 
     @staticmethod
     def build_multi_effect_command(image_paths, audio_path, output_path, captions, effects):
-        """Build FFmpeg command with transitions only (no per-image visual effects)."""
+        """Build FFmpeg command where each effect key controls visual preset + transition + idle style."""
         if not image_paths:
             raise ValueError("At least one image is required")
         if len(image_paths) != len(effects) or len(image_paths) != len(captions):
@@ -80,34 +80,20 @@ class VideoBuilder:
         image_count = len(image_paths)
         transition_duration = 0.6
 
-        # 50 transition modes (xfade) for Shorts-style image-to-image motion.
-        transition_types = [
-            'fade', 'fadeblack', 'fadewhite', 'fadegrays',
-            'wipeleft', 'wiperight', 'wipeup', 'wipedown',
-            'slideleft', 'slideright', 'slideup', 'slidedown',
-            'smoothleft', 'smoothright', 'smoothup', 'smoothdown',
-            'circlecrop', 'rectcrop', 'circleopen', 'circleclose',
-            'vertopen', 'vertclose', 'horzopen', 'horzclose',
-            'dissolve', 'pixelize', 'radial', 'distance',
-            'diagtl', 'diagtr', 'diagbl', 'diagbr',
-            'hlslice', 'hrslice', 'vuslice', 'vdslice',
-            'hblur', 'zoomin', 'fadefast', 'fadeslow',
-            'hlwind', 'hrwind', 'vuwind', 'vdwind',
-            'coverleft', 'coverright', 'coverup', 'coverdown',
-            'revealleft', 'revealright'
-        ]
-
-        effect_names = list(Config.EFFECTS.keys())
-        transition_by_effect = {
-            name: transition_types[idx % len(transition_types)]
-            for idx, name in enumerate(effect_names)
-        }
-
+        profiles = []
         weights = []
         for effect in effects:
-            effect_config = Config.EFFECTS.get(effect)
+            if isinstance(effect, dict):
+                profile = effect
+            else:
+                profile = Config.resolve_effect_profile(str(effect))
+            if not profile:
+                raise ValueError(f"Unsupported effect key: {effect}")
+            effect_name = profile.get('effect_name')
+            effect_config = Config.EFFECTS.get(effect_name)
             if not effect_config:
-                raise ValueError(f"Unsupported effect: {effect}")
+                raise ValueError(f"Unsupported effect preset: {effect_name}")
+            profiles.append(profile)
             weights.append(max(float(effect_config.get("duration_multiplier", 1.0)), 0.1))
         total_weight = sum(weights)
 
@@ -128,7 +114,7 @@ class VideoBuilder:
                 '-i', img_path,
             ])
 
-        normalization_chain = (
+        default_filter = (
             f"scale=w={Config.OUTPUT_WIDTH}:h={Config.OUTPUT_HEIGHT}:force_original_aspect_ratio=decrease,"
             f"pad=w={Config.OUTPUT_WIDTH}:h={Config.OUTPUT_HEIGHT}:x=(ow-iw)/2:y=(oh-ih)/2:color=black"
         )
@@ -137,9 +123,27 @@ class VideoBuilder:
         for i in range(image_count):
             in_label = f"[{i + 1}:v]"
             out_label = f"[v{i}]"
-            # Keep the source image visually unchanged and normalize to output canvas.
+            # Preserve original image colors: only normalize canvas + motion.
+            profile = profiles[i]
+            effect_filter = default_filter
+            idle = profile.get('idle', {})
+            zoom_w = int(idle.get('zoom_w', Config.OUTPUT_WIDTH + 108))
+            zoom_h = int(idle.get('zoom_h', Config.OUTPUT_HEIGHT + 192))
+            if zoom_w <= Config.OUTPUT_WIDTH:
+                zoom_w = Config.OUTPUT_WIDTH + zoom_w
+            if zoom_h <= Config.OUTPUT_HEIGHT:
+                zoom_h = Config.OUTPUT_HEIGHT + zoom_h
+            pan_x = float(idle.get('pan_x', 18))
+            pan_y = float(idle.get('pan_y', 14))
+            period_x = float(idle.get('period_x', 6.0))
+            period_y = float(idle.get('period_y', 7.0))
+            phase = i * 0.73
             filter_parts.append(
-                f"{in_label}{normalization_chain},"
+                f"{in_label}{effect_filter},"
+                f"scale={zoom_w}:{zoom_h},"
+                f"crop={Config.OUTPUT_WIDTH}:{Config.OUTPUT_HEIGHT}:"
+                f"x='(in_w-out_w)/2+{pan_x:.2f}*sin(2*PI*t/{period_x:.2f}+{phase:.2f})':"
+                f"y='(in_h-out_h)/2+{pan_y:.2f}*cos(2*PI*t/{period_y:.2f}+{phase:.2f})',"
                 f"fps={Config.FPS},format={Config.PIXEL_FORMAT},setsar=1,"
                 f"trim=duration={segment_durations[i]:.3f},setpts=PTS-STARTPTS"
                 f"{out_label}"
@@ -152,8 +156,7 @@ class VideoBuilder:
             current_offset = max(segment_durations[0] - transition_duration, 0.0)
 
             for i in range(1, image_count):
-                effect_name = effects[i - 1]
-                transition_name = transition_by_effect.get(effect_name, 'fade')
+                transition_name = profiles[i - 1].get('transition', 'fade')
                 next_label = f"[v{i}]"
                 out_label = f"[x{i}]"
                 filter_parts.append(
@@ -164,7 +167,11 @@ class VideoBuilder:
                 if i < image_count - 1:
                     current_offset += max(segment_durations[i] - transition_duration, 0.0)
 
-            filter_parts.append(f"{current_label}format={Config.PIXEL_FORMAT}[vout]")
+            # Keep final output color-neutral.
+            filter_parts.append(
+                f"{current_label}"
+                f"format={Config.PIXEL_FORMAT}[vout]"
+            )
 
         filter_complex = ';'.join(filter_parts)
 

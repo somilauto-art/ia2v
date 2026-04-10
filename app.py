@@ -5,7 +5,6 @@ Endpoints:
 GET  /health                    - Health check
 GET  /                          - API documentation
 POST /create-video              - Images from URLs + Audio upload
-POST /create-video-from-urls    - Images + Audio from URLs
 """
 from flask import Flask, request, jsonify, send_file, url_for
 import os, uuid, json, shutil, requests, time
@@ -32,6 +31,40 @@ def parse_bool(value, default=False):
     if isinstance(value, str):
         return value.strip().lower() in {'1', 'true', 'yes', 'y', 'on'}
     return default
+
+def normalize_effects(effects_input, required_count=10):
+    """Normalize effects payload to exactly required_count resolved effect profiles."""
+    if effects_input is None:
+        raw_effects = ['effect_key_00'] * required_count
+    elif isinstance(effects_input, str):
+        # Single key: apply same look + transition mapping across all segments.
+        raw_effects = [effects_input] * required_count
+    elif isinstance(effects_input, list):
+        if len(effects_input) == 1:
+            raw_effects = effects_input * required_count
+        elif len(effects_input) == required_count:
+            raw_effects = effects_input
+        else:
+            return None, {
+                "error": f"Provide either 1 or {required_count} effect keys in 'effects'",
+                "received": len(effects_input)
+            }
+    else:
+        return None, {
+            "error": "'effects' must be a string key, a 1-item list, or a 10-item list"
+        }
+
+    resolved = []
+    for i, effect in enumerate(raw_effects):
+        profile = Config.resolve_effect_profile(effect)
+        if profile is None:
+            return None, {
+                "error": f"Invalid effect '{effect}' at index {i}",
+                "allowed": Config.allowed_effect_inputs()
+            }
+        resolved.append(profile)
+
+    return resolved, None
 
 def cleanup_expired_videos(now_ts):
     """Remove expired generated videos from temp storage and in-memory index."""
@@ -66,7 +99,6 @@ def index():
             "GET /health": "Health check",
             "GET /": "This documentation",
             "POST /create-video": "Create video: image URLs + audio upload",
-            "POST /create-video-from-urls": "Create video: image URLs + audio URL",
             "GET /videos/<job_id>": "Download generated video when return_url=true"
         },
         "usage": {
@@ -74,21 +106,10 @@ def index():
                 "method": "POST",
                 "content_type": "multipart/form-data",
                 "fields": {
-                    "data": "JSON: {images: string[10], mode: 'simple'|'advanced', captions: string[10], effects: string[10], return_url: boolean}",
+                    "data": "JSON: {images: string[10], mode: 'simple'|'advanced', captions: string[10], effects: string|string[1]|string[10], return_url: boolean}",
                     "audio": "Audio file (mp3, wav, m4a, aac, flac, ogg)"
                 },
-                "example": "curl -X POST URL -F 'data={\"images\":[\"url1\",...]}' -F 'audio=@file.mp3'"
-            },
-            "/create-video-from-urls": {
-                "method": "POST",
-                "content_type": "application/json",
-                "body": {
-                    "images": ["url1", "url2", "..."],  # Exactly 10 URLs
-                    "audio": "https://example.com/audio.mp3",
-                    "mode": "simple",
-                    "captions": ["text1", "text2", "..."],  # Optional, 10 strings
-                    "effects": ["simple", "advanced", "..."]  # Optional, 10 effects
-                }
+                "example": "curl -X POST URL -F 'data={\"images\":[\"url1\",...],\"effects\":\"effect_key_00\"}' -F 'audio=@file.mp3'"
             }
         }
     }), 200
@@ -159,21 +180,9 @@ def create_video():
             captions = [''] * 10
         captions = (list(captions) + [''] * 10)[:10]  # Ensure exactly 10
         
-        # Validate effects array (NEW)
-        effects = params.get('effects', ['simple'] * 10)
-        if not isinstance(effects, list) or len(effects) != 10:
-            return jsonify({
-                "error": "Exactly 10 effect types required in 'effects' array",
-                "received": len(effects) if isinstance(effects, list) else "invalid type"
-            }), 400
-        
-        # Validate each effect
-        for i, effect in enumerate(effects):
-            if effect not in Config.EFFECTS:
-                return jsonify({
-                    "error": f"Invalid effect '{effect}' at index {i}",
-                    "allowed": list(Config.EFFECTS.keys())
-                }), 400
+        effects, effects_error = normalize_effects(params.get('effects'), required_count=10)
+        if effects_error:
+            return jsonify(effects_error), 400
         
         # === Setup Working Directory ===
         job_id = str(uuid.uuid4())
@@ -334,71 +343,6 @@ def download_video(job_id):
         download_name=f'short_{job_id}.mp4',
         max_age=3600,
     )
-
-@app.route('/create-video-from-urls', methods=['POST'])
-def create_video_from_urls():
-    """
-    Create YouTube Short from image URLs + audio URL (all from web)
-    Request:
-      Content-Type: application/json
-      Body: {images: string[10], audio: string, mode: string, captions: string[10], effects: string[10]}
-
-    Response:
-      200: MP4 video file
-      400: Validation error
-      500: Processing error
-    """
-    temp_dir = None
-    try:
-        # === Parse JSON Request ===
-        data = request.get_json()
-        if not data:
-            return jsonify({"error": "JSON request body required"}), 400
-        
-        # Validate images
-        images = data.get('images', [])
-        if not isinstance(images, list) or len(images) != 10:
-            return jsonify({
-                "error": "Exactly 10 image URLs required",
-                "received": len(images) if isinstance(images, list) else "invalid type"
-            }), 400
-        
-        for i, url in enumerate(images):
-            if not isinstance(url, str) or not url.startswith(('http://', 'https://')):
-                return jsonify({
-                    "error": f"Invalid image URL at index {i}",
-                    "value": str(url)[:100]
-                }), 400
-        
-        # Validate audio URL
-        audio_url = data.get('audio')
-        if not audio_url or not isinstance(audio_url, str):
-            return jsonify({"error": "Audio URL is required"}), 400
-        if not audio_url.startswith(('http://', 'https://')):
-            return jsonify({"error": "Invalid audio URL format"}), 400
-        
-        # Get optional parameters
-        mode = data.get('mode', 'simple')
-        if mode not in ['simple', 'advanced']:
-            mode = 'simple'
-        
-        captions = data.get('captions', [''] * 10)
-        if not isinstance(captions, list):
-            captions = [''] * 10
-        captions = (list(captions) + [''] * 10)[:10]
-        
-        # Validate effects array (NEW)
-        effects = data.get('effects', ['simple'] * 10)
-        if not isinstance(effects, list) or len(effects) != 10:
-            return jsonify({
-                "error": "Exactly 10 effect types required in 'effects' array",
-                "received": len(effects) if isinstance(effects, list) else "invalid type"
-            }), 400
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-    finally:
-        if temp_dir and os.path.exists(temp_dir):
-            shutil.rmtree(temp_dir)
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)

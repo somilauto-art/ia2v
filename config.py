@@ -292,14 +292,197 @@ class Config:
             "description": "Sharpened clarity look",
             "duration_multiplier": 1.0,
         },
+        "dream_glow": {
+            "filter": "scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2:color=black,gblur=sigma=1.2,eq=brightness=0.03:contrast=0.96:saturation=1.08",
+            "description": "Soft dreamy glow",
+            "duration_multiplier": 1.0,
+        },
+        "noir_film": {
+            "filter": "scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2:color=black,hue=s=0,eq=contrast=1.28:brightness=-0.02,noise=alls=4:allf=t+u",
+            "description": "Noir monochrome film",
+            "duration_multiplier": 1.0,
+        },
+        "sunset_pop": {
+            "filter": "scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2:color=black,colorbalance=rs=0.08:gs=0.02:bs=-0.06,eq=saturation=1.18:contrast=1.06",
+            "description": "Warm sunset pop",
+            "duration_multiplier": 1.0,
+        },
+        "arctic_pop": {
+            "filter": "scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2:color=black,colorbalance=rs=-0.05:gs=0.01:bs=0.08,eq=saturation=1.08:contrast=1.05",
+            "description": "Cool arctic color pop",
+            "duration_multiplier": 1.0,
+        },
+        "vhs_soft": {
+            "filter": "scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2:color=black,noise=alls=9:allf=t+u,eq=contrast=1.03:saturation=0.92,unsharp=3:3:0.2:3:3:0.0",
+            "description": "Soft VHS nostalgia",
+            "duration_multiplier": 1.0,
+        },
+        "fade_matte": {
+            "filter": "scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2:color=black,eq=contrast=0.90:brightness=0.02:saturation=0.82",
+            "description": "Matte faded grade",
+            "duration_multiplier": 1.0,
+        },
+        "clean_commercial": {
+            "filter": "scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2:color=black,unsharp=5:5:0.6:5:5:0.0,eq=contrast=1.10:brightness=0.02:saturation=1.04",
+            "description": "Clean commercial look",
+            "duration_multiplier": 1.0,
+        },
+        "pastel_wash": {
+            "filter": "scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2:color=black,eq=contrast=0.93:brightness=0.04:saturation=0.88:gamma=1.03",
+            "description": "Pastel washed tones",
+            "duration_multiplier": 1.0,
+        },
+        "bold_magazine": {
+            "filter": "scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2:color=black,eq=contrast=1.22:brightness=0.01:saturation=1.22,unsharp=5:5:0.7:5:5:0.0",
+            "description": "Bold magazine punch",
+            "duration_multiplier": 1.0,
+        },
+        "soft_skin": {
+            "filter": "scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2:color=black,gblur=sigma=0.7,eq=brightness=0.02:contrast=0.98:saturation=1.02",
+            "description": "Gentle soft-skin smoothing",
+            "duration_multiplier": 1.0,
+        },
     }
+
+    # 50 transition modes for effect_key_00..effect_key_49.
+    TRANSITION_TYPES: List[str] = [
+        'fade', 'fadeblack', 'fadewhite', 'fadegrays',
+        'wipeleft', 'wiperight', 'wipeup', 'wipedown',
+        'slideleft', 'slideright', 'slideup', 'slidedown',
+        'smoothleft', 'smoothright', 'smoothup', 'smoothdown',
+        'circlecrop', 'rectcrop', 'circleopen', 'circleclose',
+        'vertopen', 'vertclose', 'horzopen', 'horzclose',
+        'dissolve', 'pixelize', 'radial', 'distance',
+        'diagtl', 'diagtr', 'diagbl', 'diagbr',
+        'hlslice', 'hrslice', 'vuslice', 'vdslice',
+        'hblur', 'zoomin', 'fadefast', 'fadeslow',
+        'hlwind', 'hrwind', 'vuwind', 'vdwind',
+        'coverleft', 'coverright', 'coverup', 'coverdown',
+        'revealleft', 'revealright'
+    ]
+
+    # Exactly 50 internal visual presets used by public keys effect_key_00..effect_key_49.
+    EFFECT_KEY_EFFECTS: List[str] = [
+        'simple_fit', 'warm_grade', 'cool_grade', 'high_contrast', 'soft_contrast',
+        'grayscale_soft', 'grayscale_contrast', 'sepia_soft', 'sepia_deep', 'negative',
+        'mirror_h', 'rotate_cw', 'rotate_ccw', 'rotate_soft', 'blur_soft',
+        'blur_medium', 'blur_strong', 'sharpen_soft', 'sharpen_strong', 'vignette_soft',
+        'vignette_medium', 'vignette_hard', 'noise_soft', 'noise_medium', 'hue_shift_warm',
+        'hue_shift_cool', 'saturation_boost', 'saturation_reduce', 'brightness_boost', 'brightness_reduce',
+        'gamma_warm', 'gamma_cool', 'film_grain', 'cinematic', 'portrait_pop',
+        'soft_pastel', 'teal_orange', 'retro_tint', 'magenta_tint', 'clarity',
+        'dream_glow', 'noir_film', 'sunset_pop', 'arctic_pop', 'vhs_soft',
+        'fade_matte', 'clean_commercial', 'pastel_wash', 'bold_magazine', 'soft_skin'
+    ]
+
+    # 50 unique idle/post-transition style names, one for each key.
+    IDLE_STYLE_ORDER: List[str] = [f'idle_{i:02d}' for i in range(50)]
+
+    IDLE_POST_VARIANTS: List[str] = [
+        'eq=contrast=1.01:saturation=1.02',
+        'eq=contrast=1.03:saturation=1.05:brightness=0.01',
+        'eq=contrast=1.02:saturation=0.98',
+        'eq=contrast=1.06:saturation=1.08,unsharp=3:3:0.25:3:3:0.0',
+        'eq=contrast=0.99:saturation=1.00',
+        'eq=contrast=1.00:saturation=1.03:gamma=1.01',
+        'eq=contrast=1.04:saturation=1.00:brightness=0.005',
+        'eq=contrast=0.98:saturation=0.96,unsharp=3:3:0.15:3:3:0.0',
+        'eq=contrast=1.05:saturation=1.07:brightness=0.008',
+        'eq=contrast=1.00:saturation=0.99:gamma=0.99',
+    ]
+
+    @classmethod
+    def resolve_idle_style(cls, idle_name: str):
+        """Resolve idle_00..idle_49 to a unique motion/polish style."""
+        if not isinstance(idle_name, str) or not idle_name.startswith('idle_'):
+            return None
+        suffix = idle_name[len('idle_'):]
+        if not suffix.isdigit():
+            return None
+        idx = int(suffix)
+        if not (0 <= idx < 50):
+            return None
+
+        # Keep zoom deltas positive and safely above output size after renderer expansion.
+        zoom_w = 88 + (idx % 10) * 6 + (idx // 10)
+        zoom_h = 160 + (idx % 10) * 11 + (idx // 10) * 2
+        pan_x = 9 + (idx % 7) * 1.5
+        pan_y = 7 + (idx % 6) * 1.3
+        period_x = 5.0 + (idx % 9) * 0.35
+        period_y = 5.8 + (idx % 8) * 0.4
+        post = cls.IDLE_POST_VARIANTS[idx % len(cls.IDLE_POST_VARIANTS)]
+
+        return {
+            'zoom_w': round(zoom_w, 2),
+            'zoom_h': round(zoom_h, 2),
+            'pan_x': round(pan_x, 2),
+            'pan_y': round(pan_y, 2),
+            'period_x': round(period_x, 2),
+            'period_y': round(period_y, 2),
+            'post': post,
+        }
+
+    @classmethod
+    def _parse_effect_index(cls, effect: str):
+        if not isinstance(effect, str) or not effect.startswith('effect_key_'):
+            return None
+        suffix = effect[len('effect_key_'):]
+        if not suffix.isdigit():
+            return None
+        idx = int(suffix)
+        if 0 <= idx < 50:
+            return idx
+        return None
+
+    @classmethod
+    def canonical_effect_key(cls, idx: int):
+        return f"effect_key_{idx:02d}"
+
+    @classmethod
+    def resolve_effect_profile(cls, effect: str):
+        """Resolve a public effect key or direct effect name to a full rendering profile."""
+        idx = cls._parse_effect_index(effect)
+        if idx is None:
+            if effect not in cls.EFFECTS:
+                return None
+            # Backward-compat: direct effect names map to their first indexed key when available.
+            try:
+                idx = cls.EFFECT_KEY_EFFECTS.index(effect)
+            except ValueError:
+                idx = 0
+
+        effect_name = cls.EFFECT_KEY_EFFECTS[idx]
+        idle_name = cls.IDLE_STYLE_ORDER[idx]
+        idle_style = cls.resolve_idle_style(idle_name)
+        return {
+            'key': cls.canonical_effect_key(idx),
+            'effect_name': effect_name,
+            'transition': cls.TRANSITION_TYPES[idx % len(cls.TRANSITION_TYPES)],
+            'idle_name': idle_name,
+            'idle': idle_style,
+        }
+
+    @classmethod
+    def resolve_effect_key(cls, effect: str):
+        profile = cls.resolve_effect_profile(effect)
+        return profile['effect_name'] if profile else None
+
+    @classmethod
+    def allowed_effect_inputs(cls):
+        return [cls.canonical_effect_key(i) for i in range(50)] + list(cls.EFFECTS.keys())
     
     # Validate effect configurations
     @classmethod
     def validate_effects(cls):
         """Validate all effect configurations"""
-        if len(cls.EFFECTS) != 50:
-            raise ValueError(f"Expected exactly 50 effects, but found {len(cls.EFFECTS)}")
+        if len(cls.EFFECTS) < 50:
+            raise ValueError(f"Expected at least 50 effects, but found {len(cls.EFFECTS)}")
+        if len(cls.TRANSITION_TYPES) != 50:
+            raise ValueError(f"Expected exactly 50 transitions, but found {len(cls.TRANSITION_TYPES)}")
+        if len(cls.EFFECT_KEY_EFFECTS) != 50:
+            raise ValueError(f"Expected exactly 50 effect-key presets, but found {len(cls.EFFECT_KEY_EFFECTS)}")
+        if len(cls.IDLE_STYLE_ORDER) != 50:
+            raise ValueError(f"Expected exactly 50 idle style names, but found {len(cls.IDLE_STYLE_ORDER)}")
         for effect_name, effect_config in cls.EFFECTS.items():
             if "filter" not in effect_config:
                 raise ValueError(f"Effect '{effect_name}' is missing required 'filter' parameter")
@@ -307,3 +490,9 @@ class Config:
                 raise ValueError(f"Effect '{effect_name}' is missing required 'description' parameter")
             if "duration_multiplier" not in effect_config:
                 raise ValueError(f"Effect '{effect_name}' is missing required 'duration_multiplier' parameter")
+        for mapped_effect in cls.EFFECT_KEY_EFFECTS:
+            if mapped_effect not in cls.EFFECTS:
+                raise ValueError(f"Effect key maps to unknown effect '{mapped_effect}'")
+        for idle_name in cls.IDLE_STYLE_ORDER:
+            if cls.resolve_idle_style(idle_name) is None:
+                raise ValueError(f"Idle style '{idle_name}' cannot be resolved")
