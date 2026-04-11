@@ -20,10 +20,10 @@ class Config:
     AUDIO_BITRATE = '128k'
     AUDIO_SAMPLE_RATE = 48000
 
-    # 📦 Hosted response payload guard (Leapcell gateway limit safety margin)
-    MAX_RESPONSE_BYTES = 5_800_000
-    FALLBACK_VIDEO_BITRATES = ['450k', '350k', '280k']
-    FALLBACK_AUDIO_BITRATES = ['96k', '64k', '48k']
+    # 📦 Hosted response payload guard (tuned lower for Leapcell download gateway limits)
+    MAX_RESPONSE_BYTES = 4_900_000
+    FALLBACK_VIDEO_BITRATES = ['380k', '300k', '240k', '200k']
+    FALLBACK_AUDIO_BITRATES = ['80k', '64k', '48k']
     
     # 🎨 Ken Burns Effect Settings
     ZOOM_MIN = 1.0                # Start zoom level
