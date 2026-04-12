@@ -80,6 +80,25 @@ def cleanup_expired_videos(now_ts):
         if temp_dir and os.path.exists(temp_dir):
             shutil.rmtree(temp_dir, ignore_errors=True)
 
+def fetch_url_with_retries(url, timeout_seconds=30, retries=2):
+    """Fetch URL content with small retries to reduce transient network failures."""
+    last_error = None
+    headers = {
+        "User-Agent": "ia2v-video-builder/1.0"
+    }
+    for attempt in range(retries + 1):
+        try:
+            resp = requests.get(url, timeout=timeout_seconds, headers=headers)
+            resp.raise_for_status()
+            if not resp.content:
+                raise ValueError("Downloaded response is empty")
+            return resp
+        except Exception as exc:
+            last_error = exc
+            if attempt < retries:
+                time.sleep(0.8 + attempt * 0.7)
+    raise last_error
+
 @app.route('/health', methods=['GET'])
 def health():
     """Health check endpoint for monitoring"""
@@ -193,8 +212,7 @@ def create_video():
         image_paths = []
         for i, img_url in enumerate(images):
             try:
-                resp = requests.get(img_url, timeout=30)
-                resp.raise_for_status()
+                resp = fetch_url_with_retries(img_url, timeout_seconds=30, retries=2)
                 
                 # Determine file extension
                 ext = 'jpg'  # default
@@ -230,6 +248,15 @@ def create_video():
         if not os.path.exists(audio_path) or os.path.getsize(audio_path) == 0:
             shutil.rmtree(temp_dir, ignore_errors=True)
             return jsonify({"error": "Failed to save audio file"}), 500
+
+        audio_duration = VideoBuilder._get_audio_duration(audio_path)
+        if audio_duration > Config.MAX_AUDIO_DURATION:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+            return jsonify({
+                "error": "Audio duration exceeds maximum allowed",
+                "max_seconds": Config.MAX_AUDIO_DURATION,
+                "received_seconds": round(audio_duration, 2)
+            }), 400
         
         # === Generate Video ===
         output_path = os.path.join(temp_dir, 'output.mp4')
@@ -241,18 +268,30 @@ def create_video():
         
         # Calculate timeout: base + 3s per second of video
         timeout = Config.FFMPEG_TIMEOUT_BASE + int(duration * 3)
+        timeout = min(timeout, 540)
         
         app.logger.info(f"Starting video generation: job={job_id}, duration={duration:.1f}s, timeout={timeout}s")
         
         success, message = VideoBuilder.run_command(cmd, timeout=timeout)
         
         if not success:
-            shutil.rmtree(temp_dir, ignore_errors=True)
-            app.logger.error(f"Video generation failed: {message}")
-            return jsonify({
-                "error": "Video generation failed",
-                "details": message[:500]
-            }), 500
+            app.logger.warning(f"Primary render failed, retrying with safe fade transitions: {message[:350]}")
+            fallback_cmd, _ = VideoBuilder.build_multi_effect_command(
+                image_paths,
+                audio_path,
+                output_path,
+                captions,
+                effects,
+                transition_override='fade',
+            )
+            success, fallback_message = VideoBuilder.run_command(fallback_cmd, timeout=timeout)
+            if not success:
+                shutil.rmtree(temp_dir, ignore_errors=True)
+                app.logger.error(f"Video generation failed after fallback: {fallback_message}")
+                return jsonify({
+                    "error": "Video generation failed",
+                    "details": fallback_message[:1200]
+                }), 500
         
         # Verify output was created
         if not os.path.exists(output_path):

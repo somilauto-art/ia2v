@@ -69,7 +69,7 @@ class VideoBuilder:
         return cmd, duration
 
     @staticmethod
-    def build_multi_effect_command(image_paths, audio_path, output_path, captions, effects):
+    def build_multi_effect_command(image_paths, audio_path, output_path, captions, effects, transition_override=None):
         """Build FFmpeg command where each effect key controls visual preset + transition + idle style."""
         if not image_paths:
             raise ValueError("At least one image is required")
@@ -156,7 +156,7 @@ class VideoBuilder:
             current_offset = max(segment_durations[0] - transition_duration, 0.0)
 
             for i in range(1, image_count):
-                transition_name = profiles[i - 1].get('transition', 'fade')
+                transition_name = transition_override or profiles[i - 1].get('transition', 'fade')
                 next_label = f"[v{i}]"
                 out_label = f"[x{i}]"
                 filter_parts.append(
@@ -227,7 +227,11 @@ class VideoBuilder:
             if process.returncode == 0:
                 return True, "Success"
             else:
-                return False, f"FFmpeg error: {process.stderr.strip()}"
+                stderr_text = (process.stderr or '').strip()
+                # FFmpeg prints banners first; keep tail where actionable error lines appear.
+                if len(stderr_text) > 3000:
+                    stderr_text = stderr_text[-3000:]
+                return False, f"FFmpeg error: {stderr_text}"
         except subprocess.TimeoutExpired:
             return False, "FFmpeg timed out"
         except Exception as e:
