@@ -37,6 +37,7 @@ class Config:
     MAX_AUDIO_DURATION = 600      # 10 minutes max
     FFPROBE_TIMEOUT = 30          # Seconds to wait for audio probe
     FFMPEG_TIMEOUT_BASE = 180     # Base timeout before scaling by duration
+    FFMPEG_TIMEOUT_CAP = 240      # Keep below common platform gunicorn timeout (300s)
     GENERATED_URL_TTL_SECONDS = 3600
     
     # ===== EFFECT CONFIGURATION =====

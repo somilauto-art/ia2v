@@ -268,7 +268,7 @@ def create_video():
         
         # Calculate timeout: base + 3s per second of video
         timeout = Config.FFMPEG_TIMEOUT_BASE + int(duration * 3)
-        timeout = min(timeout, 540)
+        timeout = min(timeout, Config.FFMPEG_TIMEOUT_CAP)
         
         app.logger.info(f"Starting video generation: job={job_id}, duration={duration:.1f}s, timeout={timeout}s")
         
