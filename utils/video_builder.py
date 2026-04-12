@@ -9,6 +9,25 @@ import subprocess
 import json
 
 class VideoBuilder:
+    # Conservative xfade set that works broadly on FFmpeg 5.x builds.
+    SAFE_XFADE_TRANSITIONS = {
+        'fade', 'fadeblack', 'fadewhite', 'fadegrays',
+        'wipeleft', 'wiperight', 'wipeup', 'wipedown',
+        'slideleft', 'slideright', 'slideup', 'slidedown',
+        'smoothleft', 'smoothright', 'smoothup', 'smoothdown',
+        'circlecrop', 'rectcrop', 'circleopen', 'circleclose',
+        'vertopen', 'vertclose', 'horzopen', 'horzclose',
+        'dissolve', 'pixelize', 'radial', 'distance',
+        'diagtl', 'diagtr', 'diagbl', 'diagbr',
+        'hlslice', 'hrslice', 'vuslice', 'vdslice',
+        'hblur', 'zoomin', 'fadefast', 'fadeslow',
+        'hlwind', 'hrwind', 'vuwind', 'vdwind'
+    }
+
+    @staticmethod
+    def _sanitize_transition(name):
+        return name if name in VideoBuilder.SAFE_XFADE_TRANSITIONS else 'fade'
+
     @staticmethod
     def build_simple_command(image_paths, audio_path, output_path, captions=None):
         """Build FFmpeg command for simple slideshow (no effects)"""
@@ -157,6 +176,7 @@ class VideoBuilder:
 
             for i in range(1, image_count):
                 transition_name = transition_override or profiles[i - 1].get('transition', 'fade')
+                transition_name = VideoBuilder._sanitize_transition(transition_name)
                 next_label = f"[v{i}]"
                 out_label = f"[x{i}]"
                 filter_parts.append(
