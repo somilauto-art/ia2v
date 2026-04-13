@@ -6,11 +6,11 @@ GET  /health                    - Health check
 GET  /                          - API documentation
 POST /create-video              - Images from URLs + Audio upload
 """
-from flask import Flask, request, jsonify, send_file, url_for
+from flask import Flask, request, jsonify
 import os, uuid, json, shutil, requests, time
 from config import Config
 from utils.video_builder import VideoBuilder
-from utils.file_upload import upload_to_fileio
+from utils.object_storage import upload_to_object_storage
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 200 * 1024 * 1024  # 200MB upload limit
 ALLOWED_AUDIO_EXTENSIONS = {'mp3', 'wav', 'm4a', 'aac', 'flac', 'ogg'}
@@ -100,11 +100,11 @@ def index():
     return jsonify({
         "service": "YouTube Shorts Video Generator",
         "version": "2.0.0",
-        "info": "All videos are uploaded to file.io and returned as download links (14-day expiry)",
+        "info": "All videos are uploaded to Leapcell Object Storage and returned as download links",
         "endpoints": {
             "GET /health": "Health check",
             "GET /": "This documentation",
-            "POST /create-video": "Create video: image URLs + audio upload → returns file.io download link"
+            "POST /create-video": "Create video: image URLs + audio upload -> returns object storage download link"
         },
         "usage": {
             "/create-video": {
@@ -117,10 +117,10 @@ def index():
                 "response": {
                     "status": "success",
                     "job_id": "UUID of job",
-                    "download_url": "https://file.io/<key> - Direct download link",
-                    "file_key": "Unique key for this upload",
+                    "download_url": "https://<public-base>/<bucket>/<object_key>",
+                    "object_key": "Object key inside bucket",
                     "size_mb": "Generated video size",
-                    "expires_in_days": 14
+                    "storage": "leapcell_object_storage"
                 },
                 "example": "curl -X POST URL -F 'data={\"images\":[\"url1\",...],\"effects\":\"effect_key_00\"}' -F 'audio=@file.mp3'"
             }
@@ -164,9 +164,6 @@ def create_video():
         except json.JSONDecodeError:
             return jsonify({"error": "Invalid JSON in 'data' field"}), 400
         
-        # If true, endpoint returns JSON with downloadable URL instead of binary payload.
-        return_url = parse_bool(params.get('return_url'), default=False)
-
         # Validate images array
         images = params.get('images', [])
         if not isinstance(images, list) or len(images) != 10:
@@ -318,12 +315,15 @@ def create_video():
         
         app.logger.info(f"Video generated successfully: job={job_id}, size={output_size} bytes")
 
-        # === Upload to file.io (always, to bypass Leapcell response payload limit) ===
-        app.logger.info(f"Uploading video to file.io: {output_size} bytes")
-        upload_success, upload_data = upload_to_fileio(output_path, timeout=300)
+        # === Upload to Object Storage (always, to bypass Leapcell response payload limit) ===
+        app.logger.info(f"Uploading video to object storage: {output_size} bytes")
+        upload_success, upload_data = upload_to_object_storage(
+            output_path,
+            object_key=f"videos/{job_id}/short_{job_id}.mp4",
+        )
         
         if upload_success:
-            app.logger.info(f"file.io upload succeeded: {upload_data}")
+            app.logger.info(f"Object storage upload succeeded: {upload_data}")
             # Clean up temp directory after successful upload
             shutil.rmtree(temp_dir, ignore_errors=True)
             
@@ -331,19 +331,19 @@ def create_video():
                 "status": "success",
                 "job_id": job_id,
                 "download_url": upload_data['download_url'],
-                "file_key": upload_data['file_key'],
+                "object_key": upload_data['object_key'],
                 "size_mb": upload_data['file_size_mb'],
-                "expires_in_days": upload_data['expires_in_days'],
-                "message": "Download via file.io link. Valid for 14 days."
+                "storage": "leapcell_object_storage",
+                "message": "Video uploaded to object storage successfully."
             }), 200
         else:
-            app.logger.error(f"file.io upload failed: {upload_data}")
+            app.logger.error(f"Object storage upload failed: {upload_data}")
             shutil.rmtree(temp_dir, ignore_errors=True)
             return jsonify({
                 "error": "Failed to upload generated video",
                 "details": upload_data.get('error', 'Unknown error'),
                 "reason": upload_data.get('details', ''),
-                "suggestion": "Try again or use shorter audio"
+                "suggestion": "Verify object storage endpoint, bucket, keys, and public base URL environment variables"
             }), 500
         
     except Exception as e:
