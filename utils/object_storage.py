@@ -56,7 +56,13 @@ def upload_to_object_storage(file_path, object_key=None):
             )
 
         base = public_base_url.rstrip("/")
-        download_url = f"{base}/{bucket}/{key}"
+        # Support either form:
+        # 1) https://host
+        # 2) https://host/<bucket>
+        if base.endswith(f"/{bucket}"):
+            download_url = f"{base}/{key}"
+        else:
+            download_url = f"{base}/{bucket}/{key}"
         file_size_mb = round(os.path.getsize(file_path) / 1024 / 1024, 2)
 
         return True, {
