@@ -1,6 +1,7 @@
 """S3-compatible object storage uploader for generated videos."""
 
 import os
+from datetime import datetime, timedelta
 
 import boto3
 from botocore.config import Config as BotoConfig
@@ -74,4 +75,69 @@ def upload_to_object_storage(file_path, object_key=None):
         return False, {
             "error": "Object storage upload failed",
             "details": str(exc)[:700],
+        }
+
+
+def cleanup_old_videos(bucket, prefix="videos/", hours_old=24):
+    """
+    Optional manual cleanup of videos older than N hours.
+    Best practice: Enable S3 lifecycle rules instead (set expiration to 1 day in bucket config).
+    
+    This function is for auditing/verification only.
+    
+    Args:
+        bucket: S3 bucket name
+        prefix: object prefix to scan
+        hours_old: delete objects older than this many hours
+    
+    Returns:
+        dict with cleanup stats
+    """
+    endpoint_url = os.getenv("OBJECT_STORAGE_ENDPOINT", "").strip()
+    access_key = os.getenv("OBJECT_STORAGE_ACCESS_KEY_ID", "").strip()
+    secret_key = os.getenv("OBJECT_STORAGE_SECRET_ACCESS_KEY", "").strip()
+
+    if not all([endpoint_url, access_key, secret_key]):
+        return {
+            "error": "Missing credentials",
+            "deleted_count": 0,
+        }
+
+    try:
+        s3 = boto3.client(
+            "s3",
+            region_name="us-east-1",
+            endpoint_url=endpoint_url,
+            aws_access_key_id=access_key,
+            aws_secret_access_key=secret_key,
+            config=BotoConfig(signature_version="s3v4"),
+        )
+
+        threshold = datetime.utcnow() - timedelta(hours=hours_old)
+        to_delete = []
+
+        paginator = s3.get_paginator("list_objects_v2")
+        pages = paginator.paginate(Bucket=bucket, Prefix=prefix)
+
+        for page in pages:
+            if "Contents" not in page:
+                continue
+            for obj in page["Contents"]:
+                if obj["LastModified"].replace(tzinfo=None) < threshold:
+                    to_delete.append({"Key": obj["Key"]})
+
+        if to_delete:
+            s3.delete_objects(Bucket=bucket, Delete={"Objects": to_delete})
+
+        return {
+            "deleted_count": len(to_delete),
+            "threshold_before": threshold.isoformat(),
+            "prefix": prefix,
+        }
+
+    except Exception as exc:
+        return {
+            "error": "Cleanup failed",
+            "details": str(exc)[:500],
+            "deleted_count": 0,
         }
